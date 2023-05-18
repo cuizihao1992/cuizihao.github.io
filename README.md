@@ -1,421 +1,123 @@
-# cuizihao.github.io
+# 隧道车辆运行状态实时展示算法设计
+## 背景
+## 目的
+## 内容
+算法内容包括：
+- 算法主要设计了，根据定义的数据格式，设计了数据的接入方式，包含实时数据接入，历史回放数据接入。
+- 设计了车辆实时运行状态信息的更新方法，利用实时接入的数据不断更新车辆的状态信息。
+- 设计了车辆位置的更新算法，通过设置开始时间，实时对车辆数据的位置信息进行插值计算，并通过系统接口更新车辆位置。
+## 系统模块组成
+这个系统包括三个模块：数据接入、数据解析和车辆更新。 数据接入模块实时监听外部数据源，一旦有新数据到来就进行解析，并将解析完毕的数据传递给车辆更新模块。车辆更新模块接收到数据后，完成对数据的处理。通过这样的方式，整个系统实现了一个完整的流程，确保车辆的数据能够及时得到更新和处理。
+
+```mermaid
+sequenceDiagram
+    participant DataIn as 数据接入模块
+    participant DataParsing as 数据解析模块
+    participant VehicleUpdate as 车辆更新模块
+
+    DataIn->>DataParsing: 监听数据并发送数据
+    DataParsing->>VehicleUpdate: 解析数据并处理
 
 ```
-<!DOCTYPE html>
-<html lang="en">
+### 数据接入模块
+<p>数据接入模块可接入实时数据和历史数据，实时数据通过socket连接，实时将数据传入数据接入模块。为了保证数据的连续性，一般每秒钟接入4帧数据，数据频率过高会导致系统数据处理不过来造成卡顿和延迟。</p>
+数据接入模块可以同时接收多帧数据，每帧数据包含了当前帧数据的时间，一般为数据的打包时间，以及当前帧时间下，每辆车的位置信息、车道、车速、车辆的颜色、类型等属性信息。
 
-<head>
-  <!-- Use correct character set. -->
-  <meta charset="utf-8" />
-  <!-- Tell IE to use the latest, best version. -->
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
-  <meta name="viewport"
-    content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no" />
-  <title>Hello World!</title>
-  <script src="../Build/CesiumUnminified/Cesium.js"></script>
-  <script>
-    var scope;
-    if (typeof window !== 'undefined') {
-      scope = window;
-      scope.Freedo = Cesium;
-    } else if (typeof self !== 'undefined') {
-      scope = self;
-      scope.Freedo = Cesium;
-    } else if (typeof module !== 'undefined') {
-      scope = module;
-      scope.exports = Cesium;
-      scope.Freedo = module.exports;
-    } else {
-      scope = {};
-      scope.Freedo = Cesium;
-      console.log('Unable to load Cesium.');
-    }
-    if (typeof scope.Freedo.defineProperties === 'undefined') {
-      scope.Freedo.defineProperties = Object.defineProperties;
-    }
-    if (typeof scope.Freedo.isArray === 'undefined') {
-      scope.Freedo.isArray = Array.isArray;
-    }
-  </script>
-  <script src="/extends/FreedoX.js"></script>
-  <script src="./adjust3dTiles.js"></script>
-  <script src="./test.js"></script>
-  <!-- <script src="./Counter.js"></script> -->
-  <script type="module">
-    import { Counter } from './Counter.js'
-    window.counter = Counter;
-  </script>
-  <style>
-    @import url(../Build/Cesium/Widgets/widgets.css);
-
-    html,
-    body,
-    #cesiumContainer {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-    }
-  </style>
-</head>
-
-<body>
-  <div id="cesiumContainer"></div>
-  <script>
-    Cesium.Ion.defaultAccessToken =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxY2Y3NzY4OC0xMjExLTRiZjUtYTU5Ny1jYzg4ZmUzNzhhZjciLCJpZCI6MjI3NjcsInNjb3BlcyI6WyJhc3IiLCJnYyJdLCJpYXQiOjE1ODIwMTQ3MTF9.7nQHPXIiwHNXpRd_cuK_TL8P-27wUKfMt2yvsiWkpyg'
-    Cesium.Timeline.prototype.makeLabel = function (e) {
-      let date = new Date();
-      let h = 0 - date.getTimezoneOffset();
-      //由于Cesium都是以JulianDate作为默认日期，所以参数e肯定为JulianDate类型，所以我们可以像上面clock改造一样改造
-      let dateZone = Cesium.JulianDate.addMinutes(e, h, new Cesium.JulianDate());
-      let t = Cesium.JulianDate.toGregorianDate(dateZone);
-      //这里就是设置格式的地方
-      //t.year + "-" + t.month + "-" + t.day
-      return "asdf&nbsp;&nbsp;" + t.hour + ":" + t.minute + ":" + t.second + "&nbsp;&nbsp;";
-    };
-    const viewer = new Cesium.Viewer("cesiumContainer", {
-      // terrainProvider: Cesium.createWorldTerrain(),
-    });
-    let p;
-    p = viewer.entities.add(new Cesium.Entity({
-      position: new Cesium.Cartesian3.fromDegrees(112.94275912383577, 22.347486012469894),//
-      point: {
-        color: Cesium.Color.RED,
-        pixelSize: 10
-      }
-    })
-    )
-
-    setTimeout(() => {
-
-      viewer.zoomTo(p)
-    })
-    // const imageryLayers = viewer.imageryLayers;
-    // const url = 'http://10.3.4.112/cim/geoserver/gwc/service/wmts?tilematrix=EPSG:4326:14&layer=cim:cim_road_group&style=&tilerow=6140&tilecol=26764&tilematrixset=EPSG:4326&format=image/png&service=WMTS&version=1.0.0&request=GetTile';
-    // let _matrixIds = ["EPSG:4326:0", "EPSG:4326:1", "EPSG:4326:2", "EPSG:4326:3", "EPSG:4326:4", "EPSG:4326:5", "EPSG:4326:6", "EPSG:4326:7", "EPSG:4326:8", "EPSG:4326:9", "EPSG:4326:10", "EPSG:4326:11", "EPSG:4326:12", "EPSG:4326:13", "EPSG:4326:14", "EPSG:4326:15", "EPSG:4326:16", "EPSG:4326:17", "EPSG:4326:18", "EPSG:4326:19", "EPSG:4326:20", "EPSG:4326:21"];
-    // const wmts = new Cesium.WebMapTileServiceImageryProvider({
-    //   url:
-    //     "http://10.3.4.112/cim/geoserver/gwc/service/wmts",
-    //   // url: 'http://localhost:8090/geoserver/gwc/service/wmts',
-    //   layer: "cim:cim_road_group",
-    //   style: 'default',
-    //   format: "image/png",
-    //   tilematrixset: "EPSG:4326",
-    //   tileMatrixSetID: "EPSG:4326",
-    //   tileMatrixLabels: _matrixIds,
-    //   tilingScheme: new Cesium.GeographicTilingScheme({
-    //     numberOfLevelZeroTilesX: 2,
-    //     numberOfLevelZeroTilesY: 1
-    //   })
-    // })
+### 数据解析模块
+数据解析模块将数据接入模块传入的数据解析成数据帧，针对每个数据帧，解析出数据帧的时间信息，以及当前帧的各个车辆的状态信息，具体包括：车辆ID、车辆位置（x,y坐标)、所在车道、摄像头ID、车辆类型、车辆颜色、所在隧道方向、车速。
+```mermaid
+graph 
+B[数据解析模块] --> C{解析数据帧}
+C --> D{获取时间信息和车辆状态信息}
+D --> E[解析出数据帧的时间信息]
+D --> F[解析出当前帧的各个车辆的状态信息]
+F --> G{处理每个车辆的状态信息}
+G --> H[解析车辆ID]
+G --> I[解析车辆位置信息]
+G --> J[解析车辆所在车道]
+G --> K[解析摄像头ID]
+G --> L[解析车辆类型]
+G --> M[解析车辆颜色]
+G --> N[解析所在隧道方向]
+G --> O[解析车速]
 
 
-    // let wmts1 = new Cesium.WebMapTileServiceImageryProvider({
-    //   url: `http://10.3.4.117:8600/geoserver/gwc/service/wmts`, //服务地址，如：'http://localhost:8080/geoserver/gwc/service/wmts'
-    //   layer: "tgis:gis_dzzh_hptt_shm", //图层名称，如：'tasmania'
-    //   style: "",
-    //   format: "image/png",
-    //   tilematrixset: "EPSG:4326",
-    //   tileMatrixSetID: "EPSG:4326",
-    //   tileMatrixLabels: _matrixIds,
-    //   tilingScheme: new Cesium.GeographicTilingScheme({
-    //     numberOfLevelZeroTilesX: 2,
-    //     numberOfLevelZeroTilesY: 1
-    //   })
-    // });
-    // // imageryLayers.addImageryProvider(wmts1);
-    // // let imageryLayer = imageryLayers.addImageryProvider(wmts1, 3);
 
-
-    // const wms2 = new Cesium.WebMapServiceImageryProvider({
-    //   url:
-    //     "http://10.3.4.117:8600/geoserver/ows",
-    //   layers: "tgis:gis_district_sz_group_shm",
-    //   parameters: {
-    //     transparent: true,
-    //     format: "image/png",
-    //   },
-    // })
-    // const provider = new Cesium.WebMapTileServiceImageryProvider({
-    //   url:
-    //     "https://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/WMTS",
-    //   layer: "USGSShadedReliefOnly",
-    //   style: "default",
-    //   format: "image/jpeg",
-    //   tileMatrixSetID: "default028mm",
-    //   maximumLevel: 19,
-    //   credit: "U. S. Geological Survey",
-    // })
-    // // imageryLayers.addImageryProvider(
-    // //   new Cesium.WebMapServiceImageryProvider({
-    // //     url:
-    // //       "https://nationalmap.gov.au/proxy/http://geoserver.nationalmap.nicta.com.au/geotopo_250k/ows",
-    // //     layers: "Hydrography:bores",
-    // //     layers: "Habitation:buildingareas",
-    // //     parameters: {
-    // //       transparent: true,
-    // //       format: "image/png",
-    // //     },
-    // //   })
-    // // );
-
-    // //     viewer.terrainProvider = new Cesium.CesiumTerrainProvider({
-    // //     url: "http://10.223.178.107/api/t-gis/gw/COMMON/dem/dem30/"
-    // // })
-    // // viewer.scene.globe.depthTestAgainstTerrain = true
-    // const bing = new Cesium.BingMapsImageryProvider({
-    //   url: 'https://dev.virtualearth.net',
-    //   key: 'get-yours-at-https://www.bingmapsportal.com/',
-    //   mapStyle: Cesium.BingMapsStyle.AERIAL
-    // });
-    // var imageryProvider = new Cesium.MapboxStyleImageryProvider({
-    //   url: 'https://api.mapbox.com/styles/v1',
-    //   username: 'wangfen12383', //wangfen
-    //   accessToken: 'pk.eyJ1Ijoid2FuZ2ZlbjEyMzgzIiwiYSI6ImNrZGZtd2xnbzFqaWIydXBlMDJ2eTFoaTEifQ.Y-NUKtxcPcfwTjBkzBxlrg',
-    //   styleId: 'ckyntl17v04no15qr5ilfpn4h',
-    //   scaleFactor: true
-    // })
-    // viewer.imageryLayers.addImageryProvider(imageryProvider)
-
-    var tilesetUrl = 'http://localhost:81/Data/%E5%A4%A7%E5%9D%AA%E5%B1%B1%E9%9A%A7%E9%81%93/3dtiles/tileset.json';
-    tilesetUrl = 'http://localhost:81/BaiduNetdiskDownload/qjr_osgb/Production_osgb/output/tileset.json'
-    tilesetUrl = 'http://localhost:81/Data/望海路FBX_83048/FBX/3dtiles2/tileset.json'
-    tilesetUrl = 'http://localhost:81/Data/望海路FBX_83048/FBX/batch3dtiles/tileset.json'
-    tilesetUrl = 'http://localhost:81/Data/塘朗山隧道/tileset/tileset.json'
-    tilesetUrl = 'http://localhost:81/Data/塘朗山隧道/3dtiles/tileset.json'
-
-    tilesetUrl = 'http://localhost:10010/3D Tiles/北环上步立交/tileset.json'
-    tilesetUrl = 'http://localhost:10010/3D Tiles/硕果丰塑胶五金公司对侧边坡/tileset.json';//0
-    tilesetUrl = 'http://localhost:10010/3D Tiles/爱国路高架桥/tileset.json';
-
-    // tilesetUrl = 'http://localhost:10010/3D Tiles/沙井大桥/tileset.json';
-    // tilesetUrl = 'http://localhost:10010/3D Tiles/梧桐山道立交梧桐山大路西/tileset.json';
-    // tilesetUrl = 'http://localhost:10010/3D Tiles/彩田路北延段新彩隧道南洞口边坡/tileset.json'
-    // tilesetUrl = 'http://localhost:10010/3D Tiles/龙景立交D匝道-/tileset.json'
-    // var tileset0 = viewer.scene.primitives.add(new Cesium.Cesium3DTileset({
-    //   url: tilesetUrl,
-    // }))
-
-    tilesetUrl = 'http://localhost:10011/一体化项目模型原文件/3dtiles/1/tileset.json';
-    tilesetUrl = 'http://localhost:10011/一体化项目模型原文件/3dtiles/2/tileset.json';
-    tilesetUrl = 'http://10.126.1.226:20019/bim/3dtiles/tanglangshan/tileset.json';
-    tilesetUrl = 'http://localhost:10011/tanglangshanCurve/tileset.json';
-    tilesetUrl = 'http://localhost:10011/北环上步立交/tileset.json';
-    tilesetUrl = 'http://localhost:10011/沙井西大桥/tileset.json';
-    tilesetUrl = 'http://localhost:10011/沙井大桥clm2/tileset.json';
-    tilesetUrl = 'http://10.126.1.226:20018/bim/3dtiles/BIM_440300BBAM11199_shajing/tileset.json'
-    let list = [
-      '一体化项目-桥梁-北环上步立交-20220424',
-      '一体化项目-边坡-梧桐山道立交梧桐山大路西-20220506',
-      '一体化项目-边坡-福田区彩田路北延段新彩隧道南洞口边坡-20220509',
-      '一体化项目-边坡-龙岗区南坪快速路龙景立交D匝道-20220524',
-      '一体化项目-边坡五和大道ZK12+356～ZK12+472~ZK12+620~ZK12+890',
-      '一体化项目-边坡大鹏新区溪坪路K0＋635- K1+035左侧边坡-1111',
-      '一体化项目-边坡宝安区西宝线K89 +090K89H215左侧-1111',
-      '一体化项目-边坡龙华区五和大道GK11+340~ZK11+680右侧边坡-1111',
-      '塘朗山隧道',
-      '沙井西大桥',
-      '爱国路高架桥'
-    ]
-    tilesetUrl = `http://localhost:10011/${list[6]}/tileset.json`;
-    tilesetUrl = `http://localhost:10010/${"tanglangshan"}/tileset.json`
-    tilesetUrl = `https://3dmap.gcnao.cn/bim-api/assets/Ga1b8ce02e0374bbf81d90cea4657897d/tileset.json?token=eyJhbGciOiJIUzI1NiJ9.eyJhY2NvdW50SWQiOiIzMjFkODgzYmY4MjE0MDdjYjQ2ODA3MzQxODAwMjYzZCIsIm5hbWUiOiLov5DooYzmjIfmjKXkuK3lv4PmvJTnpLoiLCJ1c2VybmFtZSI6ImxpYW9saWFvMjAyMSIsInBob25lTnVtYmVyIjoiMTg5MTE0NzczNjkiLCJhY2NvdW50VHlwZSI6IlBFUlNPTkFMIiwidXNlcklkIjoiNmQ1YTI4MjRlZDc3NDMwNmI0ODUxMzU4NGNhNmNmYmQiLCJjb21wYW55SWQiOiI1NzQzOGQ2NDc5ZjU0ZTNkYjUzY2EwYWZjNmYxYzk2ZSIsImNvbXBhbnlOYW1lIjoi5LqR5Z-65pm65oWn5bel56iL6IKh5Lu95pyJ6ZmQ5YWs5Y-4IiwianRpLXV1aWQiOiJqdGktNTNlODJjZjAtYmZkMy00YTNlLWJiOTktOTlhODIyYjQ0NmQ2IiwiZXhwIjoxNjczOTQzMzQwfQ.JaMUMHTJi3ECTKtqpN3Wr-tyWowG7cPQgSa5QzxkFRc&companyId=1580021086899273729&t=1673319261562`
-    // tilesetUrl = 'https://3dmap.gcnao.cn/bim-api/assets/Ga1b8ce02e0374bbf81d90cea4657897d/tileset.json?token=eyJhbGciOiJIUzI1NiJ9.eyJhY2NvdW50SWQiOiIzMjFkODgzYmY4MjE0MDdjYjQ2ODA3MzQxODAwMjYzZCIsIm5hbWUiOiLov5DooYzmjIfmjKXkuK3lv4PmvJTnpLoiLCJ1c2VybmFtZSI6ImxpYW9saWFvMjAyMSIsInBob25lTnVtYmVyIjoiMTg5MTE0NzczNjkiLCJhY2NvdW50VHlwZSI6IlBFUlNPTkFMIiwidXNlcklkIjoiNmQ1YTI4MjRlZDc3NDMwNmI0ODUxMzU4NGNhNmNmYmQiLCJjb21wYW55SWQiOiI1NzQzOGQ2NDc5ZjU0ZTNkYjUzY2EwYWZjNmYxYzk2ZSIsImNvbXBhbnlOYW1lIjoi5LqR5Z-65pm65oWn5bel56iL6IKh5Lu95pyJ6ZmQ5YWs5Y-4IiwianRpLXV1aWQiOiJqdGktN2Q0OTg2ZjItYjdlOS00OWU2LThkZWEtZGViMTNmYjQwZWU1IiwiZXhwIjoxNjczODU4NDI5fQ.TvHCKdiaRxO2kQ9nyCdeIXbSc9K2ZYb4WbN_wTbR43A&companyId=1580021086899273729&t=1673271221761'
-    // tilesetUrl = './3dtiles/tileset.json';
-    // tilesetUrl = 'http://10.3.4.117/api-server/api/v1/tiles_3d/name/gis_buildings_shm/tiles/tileset.json'
-    // tilesetUrl = 'http://10.126.1.226:20019/bim/3dtiles/tanglangshan0908/tileset.json'
-    // tilesetUrl = 'http://jk-gnss.sutpc.com:55889/3dtiles/2/tileset.json';
-    // tilesetUrl = 'http://localhost:10011/3dtiles/2/tileset.json';
-    // tilesetUrl = 'http://localhost:10011/3d tiles/tileset.json';
-    // tilesetUrl = 'http://localhost:10011/asdf/tileset.json';
-    // tilesetUrl = 'http://jk-gnss.sutpc.com:55889/3dtiles/1/tileset.json';
-    // tilesetUrl = 'http://localhost:10012/data/tileset.json'
-    tilesetUrl = 'http://10.126.1.226:20018/bim/3dtiles/BIM_440300BBAM11199_shajing/tileset.json'
-    tilesetUrl = 'http://localhost:10010/tanglangshan/tileset.json'
-    tilesetUrl = 'http://10.126.1.226:20020/3dtiles/BIM_440300BBAM11199_shajing/tileset.json'
-    tilesetUrl = 'http://10.126.1.226:20020/3dtiles/BIM_440300BLHM11041_aiguolu/tileset.json'
-    tilesetUrl = 'http://localhost:10010/爱国路高架桥/tileset.json'
-    tilesetUrl = 'http://localhost:10010/一体化项目-桥梁-北环上步立交-20220424/tileset.json'
-    // tilesetUrl = 'http://10.126.1.226:20020/3dtiles/BIM_440300BFTM11038_beihuanshabu/tileset.json'
-    tilesetUrl = 'http://localhost:8000/road3dtiles/shenzhen/ftc/road/tileset.json'
-    tilesetUrl = 'http://localhost:8000/road3dtiles/shenzhen/ftc/bus_station/tileset.json'
-    tilesetUrl = 'http://localhost:8000/road3dtiles/shenzhen/ftc/biaopai/tileset.json'
-    tilesetUrl = 'http://localhost:8000/road3dtiles/shenzhen/ftc/building/tileset.json'
-    tilesetUrl = 'http://localhost:10010/china/tileset.json'
-    var tileset = viewer.scene.primitives.add(new Cesium.Cesium3DTileset({
-      url: tilesetUrl,
-      shadows: 0,
-      maximumScreenSpaceError: 0
-    }))
-    // test2();
-    // const tms = new Cesium.UrlTemplateImageryProvider({
-    //   url: Cesium.buildModuleUrl('Assets/Textures/NaturalEarthII') + '/{z}/{x}/{reverseY}.jpg',
-    //   // url: 'http://10.10.180.64:58899/map0/service?t=blue&x={x}&y={y}&z={z}',
-    //   // url: 'http://10.10.180.64:58899/map0/service?t=blue&x={x}&y={reverseY}&z={z}',
-    //   url: "http://localhost:8080/proxy-t-gis/api/t-gis/gw/OGC/POI_ZFJG/?layer=GGSS%3AGGSS120_pt&style=&tilematrixset=EPSG%3A4490&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image%2Fpng&TileMatrix=EPSG%3A4490%3A2&TileCol=3347&TileRow=766",
-    //   url:"http://localhost:8080/proxy-t-gis/api/t-gis/gw/OGC/POI_ZFJG/?layer=GGSS:GGSS120_pt&style=&tilematrixset=EPSG:4490&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png&TileMatrix=EPSG:4490:{z}&TileCol={x}&TileRow={y}",
-    //   tilingScheme: new Cesium.GeographicTilingScheme(),
-    //   // tilingScheme: new Cesium.WebMercatorTilingScheme()
-    // });
-    // viewer.imageryLayers.addImageryProvider(tms)
-    const shadedRelief2 = new Cesium.WebMapTileServiceImageryProvider({
-      url: 'http://basemap.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer/WMTS/tile/1.0.0/USGSShadedReliefOnly/{Style}/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.jpg',
-      layer: 'USGSShadedReliefOnly',
-      style: 'default',
-      format: 'image/jpeg',
-      tileMatrixSetID: 'default028mm',
-      maximumLevel: 19,
-      credit: new Cesium.Credit('U. S. Geological Survey')
-    });
-    // viewer.imageryLayers.addImageryProvider(shadedRelief2);
-    let arcgisProvider = new Cesium.ArcGisMapServerImageryProvider({
-      url:
-        "https://services.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/",
-      url: 'http://localhost:8080/proxy-t-gis/api/t-gis/gw/ESRI/GTKJ_DY_YLWS/MapServer/',
-      url: 'http://10.223.178.107/api/t-gis/gw/ESRI/SZMAP_WATER_ZW2K/MapServer/'
-      // url: 'http://10.223.178.107/api/t-gis/gw/ESRI/GTKJ_DY_JY/MapServer/',
-      // url:'http://10.223.178.107/api/t-gis/gw/ESRI/SZMAP_ROAD_GK2K/MapServer/',
-      // layers: ['一级医院'],
-      // layers: ['一级医院','二级医院','三级医院','卫生应急机构','全市医疗机构']
-    })
-    // viewer.imageryLayers.addImageryProvider(arcgisProvider);
-    // tileset.style = new Cesium.Cesium3DTileStyle({
-    //   color: {
-    //     conditions: [
-    //       ['(${name}==="' + '桥供南' + '")', 'color("#ff0000", 0.2)'],
-    //       ['(${name}==="' + '桥供北' + '")', 'color("#ff0000", 0.2)'],
-    //       ['(${name}==="' + '4号墩横梁' + '")', 'color("#ffff00", 0.7)'],
-    //       ['(${name}==="' + '桥墩2型' + '")', 'color("#0000ee", 0.7)'],
-    //       // ['(${name}==="' + '桥墩' + '")', 'color("#0000ee", 0.7)'],
-    //       // ['(${name}==="' + '右幅1号桥墩' + '")', 'color("#0000ee", 0.7)'],
-    //       // ['(${name}==="' + '右幅2号桥墩' + '")', 'color("#0000ee", 0.7)'],
-    //       // ['(${name}==="' + '右幅3号桥墩' + '")', 'color("#0000ee", 0.7)'],
-    //       // ['(${name}==="' + '右幅6号桥墩' + '")', 'color("#0000ee", 0.7)'],
-    //       // ['(${name}==="' + '右幅7号桥墩' + '")', 'color("#0000ee", 0.7)'],
-    //       // ['(${name}==="' + '右幅8号桥墩' + '")', 'color("#0000ee", 0.7)'],
-    //       // ['(${name}==="' + '右幅9号桥墩' + '")', 'color("#0000ee", 0.7)'],
-    //     ]
-    //   },
-    //   color: "color('rgba(255,255,255," + 0.9 + ")')",
-    //   show: {
-    //     conditions: [['(${name}==="' + '二次衬砌' + '")', false]]
-    //   }
-    // });
-    viewer.zoomTo(tileset)
-
-    var th = new FreedoX.FdMicroApp.FdTransformHelper(viewer);
-    // th.setData([model]);
-    // th.start("MOVE|ROTATE|SCALE");
-
-    // adjust3dTiles
-    var tilesets = [tileset]
-    setTimeout(() => {
-      // return
-      th.setData(tilesets);
-      th.start("MOVE|ROTATE|SCALE");
-      th.on(function (eventType, eventArg) {
-        if (eventType == "DataChanged") {
-          data = th.tranOptions;
-        }
-        //监控这个时间可以得到模型编辑之后的最新modelMatrix
-        //然后在数据加载的时候指定这个modelMatrix就可以了
-        if (eventType == "TransformedMatrix") {
-          //console.log(eventArg);
-        }
-      })
-    }, 1000)
-    function addModel() {
-      let url = "http://localhost:81/Data/大坪山隧道/fengji.gltf"
-      url = 'http://localhost:81/Code/SUTPC/frontend/public/static/tunnel/gltf/Car/Car_White.glb'
-      var origin = Cesium.Cartesian3.fromDegrees(118.087308, 24.644866, 0);
-      var modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
-      let options = {
-        url,
-        modelMatrix
-      }
-      model = this.model = viewer.scene.primitives.add(Cesium.Model.fromGltf(options))
-      model.readyPromise.then(m => {
-        var bs = model.boundingSphere;
-        var newCenter = Cesium.Matrix4.multiplyByPoint(modelMatrix, bs.center, new Cesium.Cartesian3());
-        var newBS = new Cesium.BoundingSphere(newCenter, bs.radius);
-        model.initModelMatrix = Cesium.clone(model.modelMatrix, true);
-        viewer.camera.viewBoundingSphere(newBS, new Cesium.HeadingPitchRange(0, -0.5, 0));
-        viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-      })
-    }
-    function polyline() {
-      var ple = new Freedo.FdMicroApp.FdPolylineEditor(viewer);
-      ple.setHeightOffset(0);
-      ple.setAutoLoop(false);
-      ple.start();
-
-      ple.on(function (eventType, eventArg) {
-        if (eventType == "PLAdd") {
-          needSave = true;
-          console.log(eventArg);
-        }
-
-        if (eventType == 'EditEnd') {
-          var localData = Freedo.clone(ple.pleOptions, true);
-          localData[currentIndex].pts = Freedo.clone(eventArg.pts, true);
-          ple.pleOptions = localData;
-        }
-      })
-    }
-    function projectVideo() {
-      var mm = new Freedo.FdModel.FdModelManager(viewer);
-      var lon = 118.910267083;
-      var lat = 32.117140878;
-
-      viewer.scene.camera.flyTo({
-        destination: Freedo.Cartesian3.fromDegrees(lon, lat, 100.0),
-        orientation: {
-          heading: Freedo.Math.toRadians(180),
-          pitch: Freedo.Math.toRadians(-90.0),
-          roll: 0.0
-        }
-      });
-
-      var params = {
-        longitude: lon,
-        latitude: lat,
-        altitude: 20,
-        heading: 180,
-        pitch: 0.0,
-        roll: -90.0,
-        fov: 90.0,
-        ratio: 1.2,
-        farClip: 20.0,
-        depthBias: -0.001
-      };
-      options = {
-        position: Freedo.Cartographic.fromDegrees(params.longitude, params.latitude, params.altitude),
-        heading: params.heading,
-        pitch: params.pitch,
-        roll: params.roll,
-        fov: params.fov,
-        ratio: params.ratio,
-        farClip: params.farClip,
-        depthBias: params.depthBias
-      }
-      var video
-      if (Freedo.defined(video)) {
-        video.dispose();
-        video = undefined;
-      }
-      var videoUrl = 'http://127.0.0.1:5501/JS/5.mp4'
-      video = mm.add('Video', {
-        url: videoUrl,
-        params: options,
-      });
-      show = true;
-    }
-
-  </script>
-</body>
-
-</html>
 ```
+#### 接入实时数据
+数据包含当前帧的时间，以及所有车辆当前时刻的位置；
+位置的定义为车辆在隧道中，从入口到当前位置的距离；沿着车道的距离；
+还包含了偏移的距离，距离道路中心线；包含了车辆所在的车道；车的速度以及其他的一些属性信息；
+
+
+#### 接入历史数据
+
+**实时接入数据的处理**；
+
+实时数据可能是历史数据可能是实时数据
+
+开始进行播放时，需要设置当前时间
+1. 历史数据：在进行历史回访时，以第一帧数据的时间作为事件播放的开始时间；
+2. 实时数据：以当前时间作为系统时间；
+### 时间同步模块
+#### 数据不同步问题
+由于实时车流数据可能不是同时接收的，需要解决时间同步问题。一种解决方式是定期监测时间同步情况，如果当前时间与当前帧时间差距过大，则重新设置当前时间保证数据流畅。
+每秒种接收到的数据 可能并不是相同时间间隔的数据；
+可能原因：时间系统 不同导致；数据处理导致的时间延迟；
+**如何解决数据的同步问题**
+实时数据时，相邻帧数据字面计算出的时间间隔可能与数据真实接受的时间间隔并不相同，可能收到不同计算机时间系统不同步的影响以及数据处理延迟的影响
+1. 时间系统误差，不同计算机时间系统对于每秒钟定义的时常存在误差，就好比有的钟走的快，有的钟走的慢，可能一小时差5分钟；
+2. 计算延迟误差，计算机在对帧数据进行发送时，一种情况是会以程序开始执行的时刻作为当前帧的时间，但是在处理一针数据时需要对数据有一个处理的延迟，因此最后数据发出去的时间要延后于标记的时间；
+
+以上两种情况都会导致数据帧里的时间间隔，跟真是的情况不符合，导致ue服务器在进行播放的过程中，时间正常的流动，比如走了10秒钟，平均没秒钟收到了4帧数据，一共大概时40帧数据，第一帧数据可能对于开始的时间，但最后帧的数据可能记录的时间是第9秒，导致在第10秒的时候，没有车辆的位置信息，此时车辆会停止运动；
+
+#### 时间同步模块
+定期监测时间同步情况；如果当前时间与当前帧时间差距过大则重新设置当前时间；当前时间要晚于当前帧时间；保证数据的流畅；
+
+### 车辆位置更新模块
+记录车辆的位置信息：根据当前时间对车辆的位置进行插值获取当前位置信息 ；
+
+#### 位置定义：
+我们以车辆相对隧道入口的行驶距离（沿着车道的距离）作为车辆位置的计算基础，并记录车辆距离道路中心线的偏移距离。
+
+
+
+#### 车辆位置模块：
+我们记录车辆的位置信息，并根据当前时间进行插值，以获得准确的车辆位置信息。
+
+```js
+- [ ] // 获取车辆位置模块：
+- [ ] // 记录车辆的位置信息：根据当前时间对车辆的位置进行插值获取当前位置信息 ；
+```
+- [ ] 获取车辆位置模块：
+- [ ] 记录车辆的位置信息：根据当前时间对车辆的位置进行插值获取当前位置信息 ；
+
+
+
+#### 车辆数据更新模块：
+1. 收到数据时，数据中包含了当前时间下所有车辆的信息，包括每辆车的id、位置（x,y坐标)、摄像头id、车辆类型、颜色、车道、所在隧道和车速。
+
+2. 块会将接收到的数据与上次保存的数据进行比对，根据车辆的id判断是否有新增或减少的车辆。对于新增的车辆，模块会创建新的车辆对象并添加到车辆列表中；对于减少的车辆，模块会将其从车辆列表中移除。
+
+3. 每次接收到的数据，模块会遍历其中的所有车辆。根据车辆的id，将车辆的信息更新到已存在的车辆对象中，覆盖所有的车辆属性信息，包括位置（x,y坐标)、摄像头id、车辆类型、颜色、车道、所在隧道和车速。同时，模块会更新每个车辆的位置数组，该数组记录了车辆在每个时刻的位置信息
+
+以上是对描述的重新整理，更清晰地表达了车辆更新模块的逻辑流程。
+```mermaid
+sequenceDiagram
+    participant 数据源
+    participant 车辆更新模块
+    participant 车辆列表
+    participant 车辆对象
+
+    数据源 ->> 车辆更新模块: 接收数据
+    车辆更新模块 ->> 车辆更新模块: 比对数据
+    车辆更新模块 ->> 车辆列表: 新增车辆
+    车辆更新模块 ->> 车辆列表: 移除车辆
+    车辆更新模块 ->> 车辆列表: 更新车辆信息
+    车辆列表 ->> 车辆对象: 更新车辆信息
+    车辆对象 ->> 车辆对象: 更新位置数组
+
+```
+
+
+
